@@ -1,9 +1,38 @@
-# 🚀 START HERE - Autotask MCP Server
+# 🚀 Autotask MCP Server + Web Frontend
+
+> **Two ways to use Autotask**: MCP Server for Claude Desktop or Web Interface for browser-based access
 
 
 
 
-## 🎯 Quick Setup (5 Minutes)
+---
+
+## 🌐 NEW: Web Frontend
+
+We now offer a modern web-based interface for managing Autotask! Choose between:
+
+1. **MCP Server** - Use with Claude Desktop for AI-powered ticket management
+2. **Web Interface** - Browser-based UI for direct access to Autotask
+
+### Quick Start - Web Interface
+
+```bash
+# 1. Clone or download this repository
+# 2. Configure your Autotask credentials
+cp backend/.env.example backend/.env
+# Edit backend/.env with your credentials
+
+# 3. Start the web application (starts both backend and frontend)
+./start_web.sh
+```
+
+Then open your browser to **http://localhost:3000**
+
+**Full Documentation**: See [WEB_FRONTEND_README.md](./WEB_FRONTEND_README.md) for complete setup, features, and usage.
+
+---
+
+## 🎯 MCP Server Setup (5 Minutes)
 
 ### Step 1: Install Dependencies
 ```bash
