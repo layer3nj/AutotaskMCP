@@ -149,4 +149,4 @@ Try these in Claude:
 
 **Made with ❤️ by Sondela Consulting**
 
-*Getting your PSA workflows connected to Claude's intelligence*
+
