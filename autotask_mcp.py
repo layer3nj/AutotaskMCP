@@ -18,6 +18,7 @@ Authentication: Uses username, secret, and API integration code in headers.
 import os
 import json
 import httpx
+from urllib.parse import urlparse
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
@@ -52,6 +53,22 @@ def _get_headers() -> Dict[str, str]:
     }
 
 
+# Credentials are sent as headers on every request, so the destination host is
+# pinned to Autotask. Without this an endpoint value could redirect them elsewhere.
+ALLOWED_API_HOSTS = (".autotask.net",)
+
+
+def _check_url(url: str) -> Optional[str]:
+    """Return an error message if the URL is not an allowed Autotask host."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return "Refusing to send credentials over a non-HTTPS URL"
+    host = (parsed.hostname or "").lower()
+    if not any(host == h.lstrip(".") or host.endswith(h) for h in ALLOWED_API_HOSTS):
+        return f"Refusing to send credentials to untrusted host: {host or url!r}"
+    return None
+
+
 def _make_request(
     method: str,
     endpoint: str,
@@ -60,6 +77,10 @@ def _make_request(
 ) -> Dict[str, Any]:
     """Make an HTTP request to the Autotask API."""
     url = f"{AUTOTASK_API_URL}/{endpoint}"
+    url_error = _check_url(url)
+    if url_error:
+        return {"error": url_error}
+
     headers = _get_headers()
     
     try:
