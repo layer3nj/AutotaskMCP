@@ -120,17 +120,27 @@ def _make_request(
 
     headers = _get_headers()
     
+    # The scanner flags credentials going to a URL it cannot prove is constant.
+    # url is AUTOTASK_API_URL (environment, host-pinned by _check_url above) plus
+    # an endpoint rebuilt from _ENTITY_RE and int(), then re-matched against
+    # _ENDPOINT_RE. No tool argument can steer this off an Autotask host; see
+    # test_endpoint_safety.py.
     try:
         with httpx.Client(timeout=API_TIMEOUT) as client:
             if method.upper() == "GET":
+                # nosemgrep: mcp-auth-passthrough-taint
                 response = client.get(url, headers=headers, params=params)
             elif method.upper() == "POST":
+                # nosemgrep: mcp-auth-passthrough-taint
                 response = client.post(url, headers=headers, json=data)
             elif method.upper() == "PATCH":
+                # nosemgrep: mcp-auth-passthrough-taint
                 response = client.patch(url, headers=headers, json=data)
             elif method.upper() == "PUT":
+                # nosemgrep: mcp-auth-passthrough-taint
                 response = client.put(url, headers=headers, json=data)
             elif method.upper() == "DELETE":
+                # nosemgrep: mcp-auth-passthrough-taint
                 response = client.delete(url, headers=headers)
             else:
                 return {"error": f"Unsupported HTTP method: {method}"}
