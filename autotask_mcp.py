@@ -16,6 +16,7 @@ Authentication: Uses username, secret, and API integration code in headers.
 """
 
 import os
+import re
 import json
 import httpx
 from urllib.parse import urlparse
@@ -53,9 +54,40 @@ def _get_headers() -> Dict[str, str]:
     }
 
 
-# Credentials are sent as headers on every request, so the destination host is
-# pinned to Autotask. Without this an endpoint value could redirect them elsewhere.
+# Every request carries the Autotask credentials as headers, so the request must
+# be incapable of reaching anywhere else. Tool arguments reach this module as the
+# entity name and the record id, and both are rebuilt here from a strict pattern
+# rather than interpolated as given: a value like "https://evil.example" or
+# "../../x" must never survive into the URL.
 ALLOWED_API_HOSTS = (".autotask.net",)
+
+# Autotask entity names are alphanumeric (ContractServiceBundleUnits, ...).
+_ENTITY_RE = re.compile(r"\A[A-Za-z][A-Za-z0-9]{0,63}\Z")
+# Sub-paths this module builds itself, never taken from a tool argument.
+_ALLOWED_SUFFIXES = ("", "query", "entityInformation/fields")
+# The complete assembled path: entity, optional numeric id, optional known suffix.
+_ENDPOINT_RE = re.compile(r"\A[A-Za-z][A-Za-z0-9]{0,63}(?:/[0-9]+)?(?:/(?:query|entityInformation/fields))?\Z")
+
+
+def _safe_entity(entity: str) -> str:
+    """Return the entity name, or raise if it is not a plain Autotask entity."""
+    match = _ENTITY_RE.match(str(entity).strip())
+    if not match:
+        raise ValueError(f"Invalid entity name: {entity!r}")
+    # Rebuilt from the match, so nothing of the original string is carried over.
+    return match.group(0)
+
+
+def _build_endpoint(entity: str, record_id: Optional[int] = None, suffix: str = "") -> str:
+    """Assemble an endpoint path from validated parts only."""
+    if suffix not in _ALLOWED_SUFFIXES:
+        raise ValueError(f"Unsupported endpoint suffix: {suffix!r}")
+    path = _safe_entity(entity)
+    if record_id is not None:
+        path = f"{path}/{int(record_id)}"  # int() rejects anything non-numeric
+    if suffix:
+        path = f"{path}/{suffix}"
+    return path
 
 
 def _check_url(url: str) -> Optional[str]:
@@ -76,6 +108,11 @@ def _make_request(
     params: Optional[Dict] = None
 ) -> Dict[str, Any]:
     """Make an HTTP request to the Autotask API."""
+    # endpoint is assembled by _build_endpoint; re-check here so a future caller
+    # cannot slip a raw string past the validation.
+    if not _ENDPOINT_RE.match(endpoint):
+        return {"error": f"Invalid endpoint: {endpoint!r}"}
+
     url = f"{AUTOTASK_API_URL}/{endpoint}"
     url_error = _check_url(url)
     if url_error:
@@ -136,7 +173,7 @@ def _query_entity(entity: str, filters: List[Dict], fields: Optional[List[str]] 
     if fields:
         query_body["includeFields"] = fields
     
-    return _make_request("POST", f"{entity}/query", data=query_body)
+    return _make_request("POST", _build_endpoint(entity, suffix="query"), data=query_body)
 
 
 def _format_datetime_for_api(dt: Optional[datetime] = None) -> str:
@@ -303,7 +340,7 @@ class GetPicklistValuesInput(BaseModel):
 @mcp.tool()
 async def autotask_get_ticket(params: GetTicketInput) -> str:
     """Get a ticket by ID from Autotask."""
-    result = _make_request("GET", f"Tickets/{params.ticket_id}")
+    result = _make_request("GET", _build_endpoint("Tickets", params.ticket_id))
     
     if "error" in result:
         return f"Error: {result['error']}\nDetails: {result.get('response_text', 'No details')}"
@@ -388,7 +425,7 @@ async def autotask_update_ticket(params: UpdateTicketInput) -> str:
     (Note: Status IDs vary by Autotask instance - use autotask_get_picklist_values to get exact values)
     """
     # First, get the current ticket to include required fields
-    current = _make_request("GET", f"Tickets/{params.ticket_id}")
+    current = _make_request("GET", _build_endpoint("Tickets", params.ticket_id))
     if "error" in current:
         return f"Error fetching ticket: {current['error']}\nDetails: {current.get('response_text', 'No details')}"
     
@@ -583,7 +620,7 @@ async def autotask_search_companies(params: SearchCompaniesInput) -> str:
 @mcp.tool()
 async def autotask_get_company(params: GetCompanyInput) -> str:
     """Get a company by ID from Autotask."""
-    result = _make_request("GET", f"Companies/{params.company_id}")
+    result = _make_request("GET", _build_endpoint("Companies", params.company_id))
     
     if "error" in result:
         return f"Error: {result['error']}\nDetails: {result.get('response_text', 'No details')}"
@@ -661,7 +698,7 @@ async def autotask_search_resources(params: SearchResourcesInput) -> str:
 @mcp.tool()
 async def autotask_get_resource(params: GetResourceInput) -> str:
     """Get a resource by ID from Autotask."""
-    result = _make_request("GET", f"Resources/{params.resource_id}")
+    result = _make_request("GET", _build_endpoint("Resources", params.resource_id))
     
     if "error" in result:
         return f"Error: {result['error']}\nDetails: {result.get('response_text', 'No details')}"
@@ -690,7 +727,7 @@ async def autotask_get_picklist_values(params: GetPicklistValuesInput) -> str:
     
     Example: entity="Tickets", field="status"
     """
-    result = _make_request("GET", f"{params.entity}/entityInformation/fields")
+    result = _make_request("GET", _build_endpoint(params.entity, suffix="entityInformation/fields"))
     
     if "error" in result:
         return f"Error: {result['error']}\nDetails: {result.get('response_text', 'No details')}"
